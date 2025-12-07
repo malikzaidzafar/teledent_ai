@@ -1,0 +1,496 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model admin {
+  admin_id           Int                  @id @default(autoincrement())
+  user_id            Int                  @unique
+  role               admin_role
+  permissions        Json?
+  department         String?              @db.VarChar(100)
+  users              users                @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  appointment        appointment[]
+  dentistlicense     dentistlicense[]
+  educationalcontent educationalcontent[]
+  supportticket      supportticket[]
+  systemsettings     systemsettings[]
+}
+
+model aianalysis {
+  analysis_id        Int                 @id @default(autoincrement())
+  image_id           Int                 @unique
+  model_name         String              @db.VarChar(100)
+  model_version      String              @db.VarChar(50)
+  analysis_timestamp DateTime?           @default(now()) @db.Timestamp(6)
+  processing_time_ms Int?
+  overall_confidence Decimal?            @db.Decimal(5, 4)
+  analysis_status    analysis_status?    @default(processing)
+  error_message      String?
+  raw_output         Json?
+  imageupload        imageupload         @relation(fields: [image_id], references: [image_id], onDelete: Cascade, onUpdate: NoAction)
+  detectedcondition  detectedcondition[]
+  diagnosticreport   diagnosticreport?
+}
+
+model appointment {
+  appointment_id       Int                 @id @default(autoincrement())
+  patient_id           Int
+  dentist_id           Int
+  report_id            Int?
+  appointment_type     appointment_type
+  scheduled_date       DateTime            @db.Timestamp(6)
+  duration_minutes     Int?                @default(30)
+  status               appointment_status? @default(scheduled)
+  assigned_by          Int?
+  assignment_timestamp DateTime?           @default(now()) @db.Timestamp(6)
+  cancellation_reason  String?
+  cancelled_by         Int?
+  admin                admin?              @relation(fields: [assigned_by], references: [admin_id], onUpdate: NoAction)
+  users                users?              @relation(fields: [cancelled_by], references: [user_id], onUpdate: NoAction)
+  dentist              dentist             @relation(fields: [dentist_id], references: [dentist_id], onDelete: Cascade, onUpdate: NoAction)
+  patient              patient             @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: NoAction)
+  diagnosticreport     diagnosticreport?   @relation(fields: [report_id], references: [report_id], onUpdate: NoAction)
+  consultation         consultation?
+}
+
+model auditlog {
+  log_id             Int           @id @default(autoincrement())
+  user_id            Int?
+  action_type        String        @db.VarChar(100)
+  entity_type        String        @db.VarChar(100)
+  entity_id          Int?
+  action_description String?
+  ip_address         String?       @db.VarChar(45)
+  user_agent         String?       @db.VarChar(500)
+  timestamp          DateTime?     @default(now()) @db.Timestamp(6)
+  status             audit_status? @default(success)
+  error_details      String?
+  users              users?        @relation(fields: [user_id], references: [user_id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model consultation {
+  consultation_id          Int                 @id @default(autoincrement())
+  appointment_id           Int                 @unique
+  patient_id               Int
+  dentist_id               Int
+  start_time               DateTime?           @default(now()) @db.Timestamp(6)
+  end_time                 DateTime?           @db.Timestamp(6)
+  consultation_mode        consultation_mode?  @default(video)
+  video_session_id         String?             @db.VarChar(255)
+  recording_url            String?             @db.VarChar(500)
+  is_recorded              Boolean?            @default(false)
+  connection_quality       connection_quality?
+  consultation_summary     String?
+  patient_feedback_rating  Int?
+  patient_feedback_comment String?
+  appointment              appointment         @relation(fields: [appointment_id], references: [appointment_id], onDelete: Cascade, onUpdate: NoAction)
+  dentist                  dentist             @relation(fields: [dentist_id], references: [dentist_id], onDelete: Cascade, onUpdate: NoAction)
+  patient                  patient             @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: NoAction)
+  dentistnotes             dentistnotes[]
+  prescription             prescription?
+}
+
+model dentist {
+  dentist_id            Int              @id @default(autoincrement())
+  user_id               Int              @unique
+  specialization        String?          @db.VarChar(200)
+  years_of_experience   Int?
+  qualification         String?          @db.VarChar(500)
+  clinic_name           String?          @db.VarChar(200)
+  clinic_address        String?
+  consultation_fee      Decimal?         @db.Decimal(10, 2)
+  rating                Decimal?         @default(0.00) @db.Decimal(3, 2)
+  total_consultations   Int?             @default(0)
+  is_approved           Boolean?         @default(false)
+  is_available          Boolean?         @default(true)
+  availability_schedule Json?
+  appointment           appointment[]
+  consultation          consultation[]
+  dentistlicense        dentistlicense[]
+  dentistnotes          dentistnotes[]
+  prescription          prescription[]
+}
+
+model dentistlicense {
+  license_id           Int                  @id @default(autoincrement())
+  dentist_id           Int
+  license_number       String               @unique @db.VarChar(100)
+  issuing_authority    String               @db.VarChar(200)
+  issue_date           DateTime             @db.Date
+  expiry_date          DateTime             @db.Date
+  license_document_url String?              @db.VarChar(500)
+  verification_status  verification_status? @default(pending)
+  verified_by          Int?
+  verified_at          DateTime?            @db.Timestamp(6)
+  rejection_reason     String?
+  dentist              dentist              @relation(fields: [dentist_id], references: [dentist_id], onDelete: Cascade, onUpdate: NoAction)
+  admin                admin?               @relation(fields: [verified_by], references: [admin_id], onUpdate: NoAction)
+}
+
+model dentistnotes {
+  note_id                    Int          @id @default(autoincrement())
+  consultation_id            Int
+  dentist_id                 Int
+  patient_id                 Int
+  note_timestamp             DateTime?    @default(now()) @db.Timestamp(6)
+  clinical_findings          String?
+  diagnosis                  String?
+  ai_diagnosis_confirmed     Boolean?     @default(false)
+  ai_diagnosis_modifications String?
+  additional_observations    String?
+  follow_up_required         Boolean?     @default(false)
+  follow_up_date             DateTime?    @db.Date
+  consultation               consultation @relation(fields: [consultation_id], references: [consultation_id], onDelete: Cascade, onUpdate: NoAction)
+  dentist                    dentist      @relation(fields: [dentist_id], references: [dentist_id], onDelete: Cascade, onUpdate: NoAction)
+  patient                    patient      @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model detectedcondition {
+  condition_id             Int                       @id @default(autoincrement())
+  analysis_id              Int
+  condition_name           String                    @db.VarChar(200)
+  condition_type           condition_type
+  severity                 severity_type
+  confidence_score         Decimal                   @db.Decimal(5, 4)
+  affected_region          String?                   @db.VarChar(200)
+  bounding_box_coordinates Json?
+  description              String?
+  aianalysis               aianalysis                @relation(fields: [analysis_id], references: [analysis_id], onDelete: Cascade, onUpdate: NoAction)
+  treatmentrecommendation  treatmentrecommendation[]
+}
+
+model diagnosticreport {
+  report_id              Int           @id @default(autoincrement())
+  patient_id             Int
+  analysis_id            Int           @unique
+  report_date            DateTime?     @default(now()) @db.Timestamp(6)
+  report_title           String        @db.VarChar(255)
+  summary                String?
+  total_conditions_found Int?          @default(0)
+  pdf_file_path          String?       @db.VarChar(500)
+  pdf_generated_at       DateTime?     @db.Timestamp(6)
+  is_shared_with_dentist Boolean?      @default(false)
+  report_version         Int?          @default(1)
+  appointment            appointment[]
+  aianalysis             aianalysis    @relation(fields: [analysis_id], references: [analysis_id], onDelete: Cascade, onUpdate: NoAction)
+  patient                patient       @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model educationalcontent {
+  content_id     Int          @id @default(autoincrement())
+  title          String       @db.VarChar(255)
+  content_type   content_type
+  category       String?      @db.VarChar(100)
+  content_body   String?
+  media_url      String?      @db.VarChar(500)
+  author_id      Int?
+  published_date DateTime?    @default(now()) @db.Timestamp(6)
+  last_updated   DateTime?    @default(now()) @db.Timestamp(6)
+  is_published   Boolean?     @default(false)
+  view_count     Int?         @default(0)
+  tags           Json?
+  admin          admin?       @relation(fields: [author_id], references: [admin_id], onUpdate: NoAction)
+}
+
+model imageupload {
+  image_id                Int           @id @default(autoincrement())
+  patient_id              Int
+  file_name               String        @db.VarChar(255)
+  file_path               String        @db.VarChar(500)
+  file_size               BigInt
+  file_type               String        @db.VarChar(50)
+  image_type              image_type
+  upload_source           upload_source
+  upload_timestamp        DateTime?     @default(now()) @db.Timestamp(6)
+  is_preprocessed         Boolean?      @default(false)
+  preprocessed_image_path String?       @db.VarChar(500)
+  metadata                Json?
+  aianalysis              aianalysis?
+  patient                 patient       @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model notification {
+  notification_id   Int                    @id @default(autoincrement())
+  user_id           Int
+  notification_type notification_type
+  title             String                 @db.VarChar(255)
+  message           String
+  priority          notification_priority? @default(medium)
+  is_read           Boolean?               @default(false)
+  read_at           DateTime?              @db.Timestamp(6)
+  sent_at           DateTime?              @default(now()) @db.Timestamp(6)
+  action_url        String?                @db.VarChar(500)
+  metadata          Json?
+  users             users                  @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model patient {
+  patient_id              Int                @id @default(autoincrement())
+  user_id                 Int                @unique
+  date_of_birth           DateTime?          @db.Date
+  gender                  gender_type?
+  address                 String?
+  city                    String?            @db.VarChar(100)
+  country                 String?            @db.VarChar(100)
+  medical_history         String?
+  allergies               String?
+  current_medications     String?
+  emergency_contact_name  String?            @db.VarChar(100)
+  emergency_contact_phone String?            @db.VarChar(20)
+  appointment             appointment[]
+  consultation            consultation[]
+  dentistnotes            dentistnotes[]
+  diagnosticreport        diagnosticreport[]
+  imageupload             imageupload[]
+  users                   users              @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  prescription            prescription[]
+}
+
+model prescription {
+  prescription_id        Int          @id @default(autoincrement())
+  consultation_id        Int          @unique
+  dentist_id             Int
+  patient_id             Int
+  prescription_date      DateTime?    @default(now()) @db.Timestamp(6)
+  diagnosis_summary      String?
+  medications            Json?
+  treatment_plan         String?
+  dos_and_donts          String?
+  follow_up_instructions String?
+  prescription_file_url  String?      @db.VarChar(500)
+  validity_days          Int?         @default(30)
+  consultation           consultation @relation(fields: [consultation_id], references: [consultation_id], onDelete: Cascade, onUpdate: NoAction)
+  dentist                dentist      @relation(fields: [dentist_id], references: [dentist_id], onDelete: Cascade, onUpdate: NoAction)
+  patient                patient      @relation(fields: [patient_id], references: [patient_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model supportticket {
+  ticket_id        Int              @id @default(autoincrement())
+  user_id          Int
+  ticket_type      ticket_type
+  subject          String           @db.VarChar(255)
+  description      String
+  priority         ticket_priority? @default(medium)
+  status           ticket_status?   @default(open)
+  assigned_to      Int?
+  created_at       DateTime?        @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?        @default(now()) @db.Timestamp(6)
+  resolved_at      DateTime?        @db.Timestamp(6)
+  resolution_notes String?
+  attachments      Json?
+  admin            admin?           @relation(fields: [assigned_to], references: [admin_id], onUpdate: NoAction)
+  users            users            @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model systemsettings {
+  setting_id    Int          @id @default(autoincrement())
+  setting_key   String       @unique @db.VarChar(100)
+  setting_value String
+  setting_type  setting_type
+  category      String?      @db.VarChar(100)
+  description   String?
+  is_editable   Boolean?     @default(true)
+  updated_by    Int?
+  updated_at    DateTime?    @default(now()) @db.Timestamp(6)
+  admin         admin?       @relation(fields: [updated_by], references: [admin_id], onUpdate: NoAction)
+}
+
+model treatmentrecommendation {
+  recommendation_id     Int               @id @default(autoincrement())
+  condition_id          Int
+  treatment_title       String            @db.VarChar(200)
+  treatment_description String
+  urgency_level         urgency_level
+  estimated_cost_min    Decimal?          @db.Decimal(10, 2)
+  estimated_cost_max    Decimal?          @db.Decimal(10, 2)
+  estimated_duration    String?           @db.VarChar(100)
+  self_care_tips        String?
+  detectedcondition     detectedcondition @relation(fields: [condition_id], references: [condition_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model usagestatistics {
+  stat_id         Int       @id @default(autoincrement())
+  date            DateTime  @db.Date
+  metric_name     String    @db.VarChar(100)
+  metric_value    Decimal   @db.Decimal(15, 2)
+  category        String?   @db.VarChar(100)
+  additional_data Json?
+  recorded_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model users {
+  user_id             Int             @id @default(autoincrement())
+  email               String          @unique @db.VarChar(255)
+  password_hash       String          @db.VarChar(255)
+  first_name          String          @db.VarChar(100)
+  last_name           String          @db.VarChar(100)
+  phone_number        String?         @db.VarChar(20)
+  user_type           user_type
+  profile_picture_url String?         @db.VarChar(500)
+  is_active           Boolean?        @default(true)
+  is_verified         Boolean?        @default(false)
+  created_at          DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at          DateTime?       @default(now()) @db.Timestamp(6)
+  last_login          DateTime?       @db.Timestamp(6)
+  admin               admin?
+  appointment         appointment[]
+  auditlog            auditlog[]
+  notification        notification[]
+  patient             patient?
+  supportticket       supportticket[]
+
+  @@index([email], map: "idx_users_email")
+  @@index([user_type], map: "idx_users_user_type")
+}
+
+enum admin_role {
+  super_admin
+  manager
+  support
+}
+
+enum analysis_status {
+  processing
+  completed
+  failed
+}
+
+enum appointment_status {
+  scheduled
+  in_progress
+  completed
+  cancelled
+  no_show
+}
+
+enum appointment_type {
+  initial
+  follow_up
+  emergency
+}
+
+enum audit_status {
+  success
+  failure
+}
+
+enum condition_type {
+  cavity
+  misalignment
+  plaque
+  gum_inflammation
+  missing_tooth
+  broken_tooth
+  other
+}
+
+enum connection_quality {
+  excellent
+  good
+  fair
+  poor
+}
+
+enum consultation_mode {
+  video
+  audio
+  chat
+}
+
+enum content_type {
+  article
+  faq
+  video
+  tip
+}
+
+enum gender_type {
+  male
+  female
+  other
+}
+
+enum image_type {
+  scan
+  xray
+  photo
+}
+
+enum notification_priority {
+  low
+  medium
+  high
+}
+
+enum notification_type {
+  appointment
+  report
+  message
+  system
+  reminder
+}
+
+enum setting_type {
+  string
+  integer
+  boolean
+  json
+}
+
+enum severity_type {
+  mild
+  moderate
+  severe
+}
+
+enum ticket_priority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum ticket_status {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum ticket_type {
+  technical
+  feedback
+  complaint
+  inquiry
+}
+
+enum upload_source {
+  mobile
+  webcam
+  file
+}
+
+enum urgency_level {
+  low
+  medium
+  high
+  emergency
+}
+
+enum user_type {
+  patient
+  dentist
+  admin
+}
+
+enum verification_status {
+  pending
+  approved
+  rejected
+}
